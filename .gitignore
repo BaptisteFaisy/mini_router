@@ -1,0 +1,14 @@
+# Etat d'execution (local, jamais versionne)
+inferhub-failover-circuit.json
+inferhub-failover-usage.json
+*.log
+
+# Sauvegardes locales
+*.bak
+*.bak-*
+*.bak-avant-*
+
+# Divers
+node_modules/
+.DS_Store
+Thumbs.db

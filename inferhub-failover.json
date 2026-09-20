@@ -1,0 +1,132 @@
+{
+  "port": 18100,
+  "upstream": "https://api.inferhub.dev/v1",
+  "keyEnv": "INFERHUB_API_KEY",
+  "forwardHeaders": [
+    "x-max-input-price",
+    "x-max-output-price"
+  ],
+  "retryBodyPattern": "chain exhausted|balance too low|bad gateway|no healthy upstream|rate.?limit|overloaded",
+  "attemptsPerModel": 2,
+  "circuit": {
+    "fails": 3,
+    "windowMs": 180000,
+    "coolMs": 45000,
+    "slowTps": 20,
+    "slowCoolMs": 180000,
+    "slowMinTokens": 100
+  },
+  "secondChance": [
+    "cb/deepseek-v4.1-flash"
+  ],
+  "escalation": {
+    "maxIn": 0.005,
+    "maxOut": 0.03,
+    "maxModels": 8
+  },
+  "speedPriority": {
+    "tpsRatio": 3
+  },
+  "retryDelayMs": 1000,
+  "skipChainOnError": true,
+  "museProvider": "meta",
+  "_limitsSource": "catalogue provider meta (profil tbh) du cache runtime Muse CLI (model-catalog/6d657461__p746268.json, sha256 64173168c12c49de26ee303ab194b33819221437d1237f7dd8ace4fe1b8a97d8) — releve le 20/09/2026 ; l'API REST api.meta.ai n'expose aucun quota ni limite",
+  "limits": {
+    "meta": { "context": 1007997, "output": 128000 },
+    "muse-spark-1.3-contributor": { "context": 1007997, "output": 128000 },
+    "muse-spark-1.3": { "context": 1007997, "output": 128000 },
+    "muse-spark-1.2-contributor": { "context": 1007997, "output": 128000 },
+    "muse-spark-1.2": { "context": 1007997, "output": 128000 }
+  },
+  "chainPasses": 2,
+  "maxConcurrent": 200,
+  "maxQueue": 2000,
+  "maxChainTokens": 1048576,
+  "fetchTimeoutMs": 25000,
+  "ttftTimeoutMs": 20000,
+  "agnesGuard": {
+    "enabled": true,
+    "windowMs": 60000,
+    "minTps": 20
+  },
+  "chains": {
+    "combo/cheap": [
+      "cbcn/deepseek-v4.1-flash",
+      "cx/gpt-5.6-luna",
+      "combo/cheap"
+    ],
+    "combo/max": [
+      "deepseek-v4.1-flash",
+      "glm-5.3-flash"
+    ],
+    "agnes-3.0-flash": [],
+    "muse-spark-1.3-contributor": [],
+    "muse-spark-1.3": []
+  },
+  "defaultBackups": [
+    "ag/gemini-3.7-flash-high",
+    "cb/deepseek-v4.1-flash"
+  ],
+  "providers": [
+    {
+      "name": "meta",
+      "base": "https://api.meta.ai/v1",
+      "keyEnv": "META_API_KEY",
+      "models": ["muse-spark-1.3-contributor", "muse-spark-1.3"],
+      "coolMs": 45000,
+      "timeoutMs": 240000,
+      "ttftTimeoutMs": 120000,
+      "headers": {
+        "User-Agent": "muse-build/1.3.0 (non-interactive; windows-x86_64; build 3c572bc7348890f3f5cb4f2)"
+      },
+      "forceBody": {
+        "reasoning_effort": "max"
+      },
+      "bodyFix": {
+        "drop": ["stop", "logprobs", "reasoning"],
+        "dropStreamOptionsWhenNotStreaming": true,
+        "exclusiveMaxTokens": true,
+        "forceToolChoiceAuto": true
+      }
+    },
+    {
+      "name": "agnes",
+      "base": "https://apihub.agnes-ai.com/v1",
+      "keyEnv": "AGNES_API_KEY",
+      "models": ["agnes-3.0-flash"],
+      "coolMs": 45000
+    }
+  ],
+  "duelloDev": {
+    "_comment": "LIEN PREPARE ET INERTE. Ce bloc decrit comment la pile Duello dev du VPS pourra utiliser CE routeur comme fournisseur LLM. Il est volontairement HORS du tableau `providers` : le code ne lit que CFG.providers, jamais cette cle (verifie : `duelloDev` absent de la liste des CFG.* du .mjs). Le laisser ici ne branche rien et ne change aucun comportement. Activation = lancer duello-dev-combo-tunnel.ps1 -Activer (tunnel SSH inverse) puis pointer la pile dev sur routerBaseUrlOnVps.",
+    "_activation": "C:\\Users\\jeanp\\Documents\\Switch-PrepApp\\scripts\\duello-dev-combo-tunnel.ps1 -Activer",
+    "_procedure": "C:\\Users\\jeanp\\Documents\\Switch-PrepApp\\scripts\\duello-dev-vers-routeur.md",
+    "enabled": false,
+    "direction": "duello-dev -> routeur",
+    "transport": "tunnel SSH inverse depuis ce PC vers l'alias ssh `vps`",
+    "sshHost": "vps",
+    "vpsHostname": "azure-duello.tail3a8bdf.ts.net",
+    "vpsHostnameOs": "duello-prod-vm",
+    "vpsTailscaleIp": "100.103.224.119",
+    "vpsUser": "duelloedit",
+    "remotePort": 18100,
+    "localTarget": "127.0.0.1:18100",
+    "routerBaseUrlOnVps": "http://127.0.0.1:18100/v1",
+    "routerBind": "127.0.0.1 (loopback code en dur, inferhub-failover.mjs:1614) — d'ou le tunnel inverse obligatoire",
+    "devStack": {
+      "apiService": "duello-development-api.service",
+      "relayService": "duello-development-relay.service",
+      "apiPort": 8893,
+      "relayPort": 18787,
+      "apiConfigFile": "/etc/duello-development/api.env"
+    },
+    "verifiedAt": "2026-09-19",
+    "verifiedFacts": [
+      "port 18100 libre sur le VPS (ss -ltn, 0 occurrence)",
+      "duello-development-api.service actif sur le VPS",
+      "duello-development-relay.service actif sur le VPS",
+      "alias ssh `vps` present dans ~/.ssh/config avec ExitOnForwardFailure yes",
+      "routeur en ecoute sur 127.0.0.1:18100 cote PC"
+    ]
+  }
+}
