@@ -1,5 +1,6 @@
 {
   "port": 18100,
+  "host": "0.0.0.0",
   "upstream": "https://api.inferhub.dev/v1",
   "keyEnv": "INFERHUB_API_KEY",
   "forwardHeaders": [
@@ -112,7 +113,7 @@
     "remotePort": 18100,
     "localTarget": "127.0.0.1:18100",
     "routerBaseUrlOnVps": "http://127.0.0.1:18100/v1",
-    "routerBind": "127.0.0.1 (loopback code en dur, inferhub-failover.mjs:1614) — d'ou le tunnel inverse obligatoire",
+    "routerBind": "configurable : `host` (config) / FAILOVER_HOST (env). Defaut 127.0.0.1 ; 0.0.0.0 expose sur le tailnet (garde de provenance : loopback + 100.64.0.0/10 uniquement)",
     "devStack": {
       "apiService": "duello-development-api.service",
       "relayService": "duello-development-relay.service",

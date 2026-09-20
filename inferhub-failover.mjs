@@ -15,6 +15,21 @@ const CFG = JSON.parse(fs.readFileSync(process.env.FAILOVER_CONFIG || path.join(
 // FAILOVER_UPSTREAM permet de tester contre un faux fournisseur
 if (process.env.FAILOVER_UPSTREAM) CFG.upstream = process.env.FAILOVER_UPSTREAM;
 
+// [COMBO/CHEAP 20260919] PROTECTION — NE PAS TOUCHER — DO NOT TOUCH.
+// combo/cheap DOIT rester TOUJOURS DISPONIBLE et FONCTIONNELLE (directive JP
+// 2026-09-19). Si la config oublie la chaine ou la laisse vide, on la restaure
+// ici, au demarrage. `chainFor('combo/cheap')` ne rend jamais une chaine vide :
+// le modele demande reste toujours en dernier maillon (ROUTER-LAST).
+const COMBO_CHEAP_DEFAULT = ['cbcn/deepseek-v4.1-flash', 'cx/gpt-5.6-luna', 'combo/cheap'];
+(function restoreComboCheapChain() {
+  CFG.chains = CFG.chains && typeof CFG.chains === 'object' ? CFG.chains : {};
+  const c = CFG.chains['combo/cheap'];
+  if (!Array.isArray(c) || c.length === 0) {
+    CFG.chains['combo/cheap'] = [...COMBO_CHEAP_DEFAULT];
+    log(`[combo/cheap] chaine absente/vide → restauree : ${CFG.chains['combo/cheap'].join(' > ')}`);
+  }
+})();
+
 function loadRealKey() {
   // [KEY-USER-FIRST 20260915] la variable utilisateur fait foi ; process.env
   // du lanceur peut contenir une clé périodée (rotation).
@@ -1493,11 +1508,50 @@ function statusObj() {
       'GET /v1/usage', 'GET /dashboard', 'POST /v1/usage/probe', 'POST /v1/usage/reset'],
     usage_endpoint: '/v1/usage',
     dashboard: '/dashboard',
+    // [COMBO/CHEAP 20260919] chaine fonctionnelle exposee (protection JP) :
+    // lisible sur GET / et GET /healthz. Jamais vide (restauration au boot).
+    comboCheap: CFG.chains?.['combo/cheap']?.length ? CFG.chains['combo/cheap'] : [...COMBO_CHEAP_DEFAULT],
     pool: { active: poolActive, queued: poolQueue.length }, providers,
   };
 }
 
+// [ACCES-DISTANT 20260920] Le routeur est une passerelle LOCALE par defaut
+// (127.0.0.1). Pour l'utiliser depuis TOUS les appareils du tailnet, on peut le
+// lier a une autre interface via `host` (config) / FAILOVER_HOST (env).
+// ATTENTION : le routeur n'authentifie PAS ses clients — il injecte sa PROPRE
+// cle amont (REAL_KEY). L'exposer au-dela du loopback laisserait n'importe qui
+// consommer le quota. On n'accepte donc, hors loopback, que le tailnet
+// Tailscale (100.64.0.0/10 en IPv4, fd7a:115c:a1e0::/48 en IPv6).
+// FAILOVER_ALLOW_ANY=1 leve la garde (reseau de confiance explicite).
+const BIND_HOST = process.env.FAILOVER_HOST || CFG.host || '127.0.0.1';
+const ALLOW_ANY_REMOTE = process.env.FAILOVER_ALLOW_ANY === '1';
+function normalizeRemote(addr) {
+  let s = String(addr || '');
+  if (s.startsWith('::ffff:')) s = s.slice(7); // IPv4-mapped IPv6
+  return s;
+}
+function isAllowedRemote(addr) {
+  if (ALLOW_ANY_REMOTE) return true;
+  const s = normalizeRemote(addr);
+  if (!s) return false;
+  if (s === '::1' || s.startsWith('127.')) return true; // loopback
+  if (s.startsWith('fd7a:115c:a1e0:')) return true;     // Tailscale IPv6
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(s);
+  if (m) {
+    const o = m.slice(1).map(Number);
+    if (o.every((n) => n <= 255) && o[0] === 100 && o[1] >= 64 && o[1] <= 127) return true; // 100.64.0.0/10
+  }
+  return false;
+}
+
 const server = http.createServer(async (req, res) => {
+  // [ACCES-DISTANT 20260920] garde de provenance : hors loopback, seuls les
+  // pairs du tailnet sont servis (le routeur injecte sa propre cle amont).
+  if (!isAllowedRemote(req.socket && req.socket.remoteAddress)) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'forbidden: source hors loopback/tailnet' }));
+    return;
+  }
   // [VITESSE 20260919] routage sans `new URL` (aucun parse par requête ;
   // sémantique pathname conservée, query tolérée).
   const rurl = req.url || '';
@@ -2003,4 +2057,4 @@ const server = http.createServer(async (req, res) => {
 });
 
 const PORT = process.env.FAILOVER_PORT || CFG.port;
-server.listen(PORT, '127.0.0.1', () => log(`inferhub-failover v2 sur 127.0.0.1:${PORT} (clé: ${REAL_KEY ? 'OK' : 'ABSENTE'}, agnes: ${agnesKey ? 'OK (' + agnesKey.slice(0, 8) + '…)' : 'ABSENTE'})`));
+server.listen(PORT, BIND_HOST, () => log(`inferhub-failover v2 sur ${BIND_HOST}:${PORT} (clé: ${REAL_KEY ? 'OK' : 'ABSENTE'}, agnes: ${agnesKey ? 'OK (' + agnesKey.slice(0, 8) + '…)' : 'ABSENTE'})`));

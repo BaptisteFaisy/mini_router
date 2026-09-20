@@ -9,7 +9,14 @@ Sont considérés comme erreurs : statut HTTP ≥ 400, corps 200 contenant
 `{"error": ...}`, réponse sans `choices`, événement d'erreur dans le flux SSE,
 stream interrompu avant `[DONE]`, erreur réseau ou timeout (TTFT / global).
 
-Écoute par défaut : `http://127.0.0.1:18100`.
+Écoute par défaut : `http://127.0.0.1:18100` (`host` dans la config, ou
+`FAILOVER_HOST`). Pour un accès depuis tous les appareils du tailnet, mettre
+`"host": "0.0.0.0"` : le routeur répond alors à
+`http://<tailnet-host>:18100/v1` (ex. `http://pc-fixe-cst:18100/v1`) depuis
+chaque appareil, sans tunnel SSH. La garde de provenance n'accepte, hors
+loopback, que le tailnet Tailscale (`100.64.0.0/10`) — le routeur n'authentifie
+pas ses clients et injecte sa propre clé amont, donc jamais d'exposition LAN
+(`FAILOVER_ALLOW_ANY=1` lève la garde si besoin).
 
 > ## PROTECTION COMBO/CHEAP — NE PAS TOUCHER — DO NOT TOUCH
 >
@@ -45,8 +52,9 @@ stream interrompu avant `[DONE]`, erreur réseau ou timeout (TTFT / global).
 
 `inferhub-failover.json` — clés principales :
 
-- `port` (18100), `upstream`, `keyEnv` (`INFERHUB_API_KEY`),
-  `forwardHeaders`, `retryBodyPattern`, `attemptsPerModel` ;
+- `port` (18100), `host` (`127.0.0.1` ; `0.0.0.0` pour le tailnet), `upstream`,
+  `keyEnv` (`INFERHUB_API_KEY`), `forwardHeaders`, `retryBodyPattern`,
+  `attemptsPerModel` ;
 - `circuit` : disjoncteur par modèle (`fails`, `windowMs`, `coolMs`, seuils de
   lenteur `slowTps` / `slowCoolMs` / `slowMinTokens`) ;
 - `chains` : ordre de repli par modèle demandé ;
