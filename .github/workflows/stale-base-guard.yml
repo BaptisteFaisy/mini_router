@@ -1,0 +1,52 @@
+name: stale-base-guard (informatif)
+
+# [HERMES-REFRESH] Portage du stale-base-guard du dépôt duello.
+# Un retard sur main est INFORMATIF : warning + exit 0. Le gate
+# (hermes-lite.yml) rafraîchit la branche par l'API au moment du merge.
+# Si le dépôt met ce check en « requis » dans la protection de branche,
+# il reste vert sur un simple retard : seul un vrai conflit bloque.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Numéro de PR'
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: stale-base-guard-${{ github.event.pull_request.number || github.event.inputs.pr_number }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    name: stale-base-guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Mesurer le retard sur la base
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          BASE="${{ github.event.pull_request.base.ref || 'main' }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha || '' }}"
+          if [ -z "$HEAD_SHA" ]; then
+            HEAD_SHA=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
+              | python3 -c "import sys,json; print(json.load(sys.stdin)['head']['sha'])")
+          fi
+          BEHIND=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/compare/${BASE}...${HEAD_SHA}" \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('behind_by', 0))")
+          echo "behind=${BEHIND} base=${BASE}" >> "$GITHUB_OUTPUT" || true
+          if [ "$BEHIND" -gt 0 ]; then
+            echo "::warning::La branche est en retard de ${BEHIND} commit(s) sur ${BASE} (information : hermes-lite la rafraîchit automatiquement au moment du merge)."
+          fi
+          exit 0
