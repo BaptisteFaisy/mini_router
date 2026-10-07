@@ -9,3 +9,5 @@ PR témoin du runbook `~/Bureau/hermes-port/RUNBOOK-PORTAGE.md` § 3.6.
   requis (`HERMES_REQUIRED_CHECKS` vide) → **merge automatique (rebase)**.
 - Aucune action humaine attendue entre l'ouverture et le merge.
 - Référence : BaptisteFaisy/duello#841 ([HERMES-REFRESH]).
+
+Bump post-fix [HERMES-LITE-SETTLE-20261007] : relance la recette avec le settle dans le run du gate.
