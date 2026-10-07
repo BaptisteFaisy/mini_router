@@ -1,0 +1,46 @@
+name: Hermes Lite (gate)
+
+# [HERMES-REFRESH] Gate « fraîcheur exigée au merge ».
+# La logique complète vit dans .github/hermes/gate.py (stdlib seule).
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize]
+  check_run:
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Numéro de PR spécifique (vide = toutes les PR ouvertes)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: write
+
+concurrency:
+  group: hermes-lite-${{ github.repository }}
+  cancel-in-progress: true
+
+env:
+  GH_TOKEN: ${{ secrets.HERMES_LITE_TOKEN || github.token }}
+  # IMPORTANT (runbook §3) : à renseigner PAR DÉPÔT — contexts de statut requis
+  # avant merge, séparés par des virgules. Vide = merge dès que la PR est fraîche.
+  HERMES_REQUIRED_CHECKS: ''
+  MERGE_METHOD: rebase
+
+jobs:
+  gate:
+    name: Verdict
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Gate
+        run: |
+          export INPUT_PR_NUMBER="${{ github.event.inputs.pr_number }}"
+          export HERMES_LITE_DRY_RUN="${{ vars.HERMES_LITE_DRY_RUN || '0' }}"
+          python3 .github/hermes/gate.py
