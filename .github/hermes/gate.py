@@ -15,6 +15,7 @@ LABEL_OK = 'hermes/approuvee'
 LABEL_CONFLIT = 'hermes/conflit'
 
 import json
+import time
 
 
 def api(method, url, body=None, token=None):
@@ -93,6 +94,53 @@ def required_checks_green(repo, token, pr, required):
     return True
 
 
+def settle_after_refresh(repo, token, num, required, attempts=10, pause=6, dry=False):
+    """[HERMES-REFRESH] Ré-évalue la PR après le rebase serveur, DANS CE RUN.
+
+    Le push effectué par `update-branch` est un push de bot : il ne déclenche
+    AUCUN workflow (anti-récursion GitHub), et hermes-lite n'a ni cron ni
+    dispatch possible avec GITHUB_TOKEN. Sans cette boucle, une PR rebasée
+    resterait ouverte pour toujours : personne ne la re-évaluerait.
+    Pollue borné (~60 s), puis rend la main (la veille événementielle
+    rattrapera au prochain check_run de ce head).
+    """
+    for i in range(attempts):
+        time.sleep(pause if i else 2)
+        sc, pr = api('GET', '/repos/%s/pulls/%d' % (repo, num), token=token)
+        if sc != 200 or not isinstance(pr, dict):
+            continue
+        if pr.get('merged'):
+            return 'merged'
+        sha = pr['head']['sha']
+        base_ref = pr['base']['ref']
+        sc, cmp_ = api('GET', '/repos/%s/compare/%s...%s' % (repo, base_ref, sha),
+                       token=token)
+        behind = cmp_.get('behind_by') if sc == 200 else -1
+        behind = behind if isinstance(behind, int) else -1
+        if behind > 0:
+            continue  # rebase pas encore appliqué (ou main a bougé entre-temps)
+        conflicts = (pr.get('mergeable') is False
+                     and (pr.get('mergeable_state') or '') == 'dirty')
+        if conflicts:
+            create_check(repo, token, sha, False,
+                         'Conflits avec %s — intervention humaine' % base_ref,
+                         'Le rebase automatique a révélé un conflit. Rebase manuel '
+                         'puis push, ou label `hermes/intervention-humaine`.')
+            set_label(pr, repo, token, LABEL_CONFLIT, True)
+            set_label(pr, repo, token, LABEL_OK, False)
+            return 'conflict'
+        set_label(pr, repo, token, LABEL_OK, True)
+        create_check(repo, token, sha, True, 'PR à jour — merge par le gate',
+                     'Fraîche au moment du merge (settle après rebase serveur).')
+        if dry:
+            return 'dry'
+        m = try_merge(repo, token, pr, required)
+        print('[gate] #%d : settle merge → %s' % (num, m), flush=True)
+        if m != 'waiting':
+            return m
+    return 'timeout'
+
+
 def try_merge(repo, token, pr, required):
     """Merge la PR (méthode rebase) si fraîche et checks requis verts."""
     num = pr['number']
@@ -145,6 +193,10 @@ def handle_pr(pr, repo, token, required, dry=False):
             return 'dry'
         r = refresh_branch(repo, token, pr)
         print('[gate] #%d : en retard de %s → refresh %s' % (num, behind, r), flush=True)
+        if r == 'refreshed':
+            # Le push du rebase est un push de bot : aucun workflow ne se
+            # déclenche. Ré-évaluation et merge DANS CE RUN.
+            return settle_after_refresh(repo, token, num, required, dry=dry)
         if r == 'conflict':
             # Le rebase serveur a été refusé : conflit réel après tout.
             create_check(repo, token, sha, False,
